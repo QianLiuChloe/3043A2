@@ -1,5 +1,9 @@
 package nuber.students;
 
+import java.util.concurrent.*;
+import java.util.Queue;
+import java.util.LinkedList;
+
 import java.util.concurrent.Future;
 
 /**
@@ -17,7 +21,12 @@ import java.util.concurrent.Future;
  *
  */
 public class NuberRegion {
-
+	
+    private final NuberDispatch dispatch;
+    private final String regionName;
+    private final int maxSimultaneousJobs;
+    private final Queue<Booking> pendingBookings = new LinkedList<>();
+    private boolean isShutDown = false;
 	
 	/**
 	 * Creates a new Nuber region
@@ -28,8 +37,9 @@ public class NuberRegion {
 	 */
 	public NuberRegion(NuberDispatch dispatch, String regionName, int maxSimultaneousJobs)
 	{
-		
-
+        this.dispatch = dispatch;
+        this.regionName = regionName;
+        this.maxSimultaneousJobs = maxSimultaneousJobs;
 	}
 	
 	/**
@@ -45,14 +55,35 @@ public class NuberRegion {
 	 */
 	public Future<BookingResult> bookPassenger(Passenger waitingPassenger)
 	{		
-		
+        if (isShutDown) {
+            dispatch.logEvent(null, "Booking rejected, region is shutting down.");
+            return null;
+        }
+
+        Booking booking = new Booking(dispatch, waitingPassenger);
+        pendingBookings.add(booking);
+        dispatch.logEvent(booking, "Booking created");
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return booking.call(); // Start booking process
+            } catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+        });
 	}
+	
+    public int getPendingBookings() {
+        return pendingBookings.size();
+    }
 	
 	/**
 	 * Called by dispatch to tell the region to complete its existing bookings and stop accepting any new bookings
 	 */
 	public void shutdown()
 	{
+		isShutDown = true;
 	}
 		
 }

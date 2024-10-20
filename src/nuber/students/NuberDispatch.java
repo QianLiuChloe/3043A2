@@ -1,12 +1,17 @@
 package nuber.students;
 
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.HashMap;
 import java.util.concurrent.Future;
+
 
 /**
  * The core Dispatch class that instantiates and manages everything for Nuber
  * 
- * @author james
+ * @author Qian Liu
  *
  */
 public class NuberDispatch {
@@ -15,7 +20,9 @@ public class NuberDispatch {
 	 * The maximum number of idle drivers that can be awaiting a booking 
 	 */
 	private final int MAX_DRIVERS = 999;
-	
+	private final HashMap<String, NuberRegion> regions;
+    private final Queue<Driver> idleDrivers = new LinkedList<>();
+    private final ReentrantLock driverLock = new ReentrantLock();
 	private boolean logEvents = false;
 	
 	/**
@@ -27,6 +34,11 @@ public class NuberDispatch {
 	 */
 	public NuberDispatch(HashMap<String, Integer> regionInfo, boolean logEvents)
 	{
+        this.logEvents = logEvents;
+        this.regions = new HashMap<>();
+        for (String region : regionInfo.keySet()) {
+            this.regions.put(region, new NuberRegion(this, region, regionInfo.get(region)));
+        }
 	}
 	
 	/**
@@ -39,6 +51,16 @@ public class NuberDispatch {
 	 */
 	public boolean addDriver(Driver newDriver)
 	{
+        driverLock.lock();
+        try {
+            if (idleDrivers.size() < MAX_DRIVERS) {
+                idleDrivers.add(newDriver);
+                return true;
+            }
+            return false; // Driver limit reached
+        } finally {
+            driverLock.unlock();
+        }
 	}
 	
 	/**
@@ -50,6 +72,12 @@ public class NuberDispatch {
 	 */
 	public Driver getDriver()
 	{
+        driverLock.lock();
+        try {
+            return idleDrivers.poll(); // Return the first available driver
+        } finally {
+            driverLock.unlock();
+        }
 	}
 
 	/**
@@ -80,7 +108,13 @@ public class NuberDispatch {
 	 * @return returns a Future<BookingResult> object
 	 */
 	public Future<BookingResult> bookPassenger(Passenger passenger, String region) {
+        NuberRegion nuberRegion = regions.get(region);
+        if (nuberRegion != null) {
+            return nuberRegion.bookPassenger(passenger);
+        }
+        return null; // Region doesn't exist
 	}
+	
 
 	/**
 	 * Gets the number of non-completed bookings that are awaiting a driver from dispatch
@@ -91,12 +125,20 @@ public class NuberDispatch {
 	 */
 	public int getBookingsAwaitingDriver()
 	{
+        int totalPending = 0;
+        for (NuberRegion region : regions.values()) {
+            totalPending += region.getPendingBookings();
+        }
+        return totalPending;
 	}
 	
 	/**
 	 * Tells all regions to finish existing bookings already allocated, and stop accepting new bookings
 	 */
 	public void shutdown() {
+        for (NuberRegion region : regions.values()) {
+            region.shutdown();
+        }
 	}
 
 }

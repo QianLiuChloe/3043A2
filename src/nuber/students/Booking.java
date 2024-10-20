@@ -1,5 +1,8 @@
 package nuber.students;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Date;
+
 /**
  * 
  * Booking represents the overall "job" for a passenger getting to their destination.
@@ -15,11 +18,17 @@ package nuber.students;
  * Booking's should have a globally unique, sequential ID, allocated on their creation. 
  * This should be multi-thread friendly, allowing bookings to be created from different threads.
  * 
- * @author james
+ * @author Qian Liu
  *
  */
 public class Booking {
-
+	
+    private static final AtomicInteger jobCounter = new AtomicInteger(1);
+    private final int jobID;
+    private final NuberDispatch dispatch;
+    private final Passenger passenger;
+    private Driver driver;
+    private long startTime;
 		
 	/**
 	 * Creates a new booking for a given Nuber dispatch and passenger, noting that no
@@ -31,6 +40,10 @@ public class Booking {
 	 */
 	public Booking(NuberDispatch dispatch, Passenger passenger)
 	{
+        this.jobID = jobCounter.getAndIncrement();
+        this.dispatch = dispatch;
+        this.passenger = passenger;
+        this.startTime = new Date().getTime();
 	}
 	
 	/**
@@ -43,14 +56,22 @@ public class Booking {
 	 * 4.	It must then call the Driver.driveToDestination() function, with the thread pausing 
 	 * 			whilst as function is called.
 	 * 5.	Once at the destination, the time is recorded, so we know the total trip duration. 
-	 * 6.	The driver, now free, is added back into Dispatch’s list of available drivers. 
+	 * 6.	The driver, now free, is added back into Dispatchï¿½s list of available drivers. 
 	 * 7.	The call() function the returns a BookingResult object, passing in the appropriate 
 	 * 			information required in the BookingResult constructor.
 	 *
 	 * @return A BookingResult containing the final information about the booking 
 	 */
-	public BookingResult call() {
-
+	public BookingResult call() throws InterruptedException {
+        this.driver = dispatch.getDriver(); // Wait for a driver
+        if (driver != null) {
+            driver.pickUpPassenger(passenger);
+            driver.driveToDestination();
+            long tripDuration = new Date().getTime() - startTime;
+            dispatch.addDriver(driver); // Driver is free again
+            return new BookingResult(jobID, passenger, driver, tripDuration);
+        }
+        return null; // No driver available
 	}
 	
 	/***
@@ -66,6 +87,7 @@ public class Booking {
 	@Override
 	public String toString()
 	{
+		return jobID + ":" + (driver != null ? driver.name : "null") + ":" + (passenger != null ? passenger.name : "null");
 	}
 
 }
