@@ -1,36 +1,54 @@
 package nuber.students;
 
-import java.util.Date;
-import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicInteger;
 
-public class Booking implements Callable<BookingResult> {
+public class Booking {
 
-    private static int globalJobID = 1;
-    private int jobID;
-    private NuberDispatch dispatch;
-    private Passenger passenger;
+    private static final AtomicInteger nextBookingID = new AtomicInteger(0);
+    private final int bookingID;
+    private final Passenger passenger;
+    private final NuberDispatch dispatch;
     private Driver driver;
-    private long startTime;
+    private final long startTime;
 
     public Booking(NuberDispatch dispatch, Passenger passenger) {
+        this.bookingID = nextBookingID.incrementAndGet();
         this.dispatch = dispatch;
         this.passenger = passenger;
-        this.jobID = globalJobID++;
-        this.startTime = new Date().getTime();
+        this.startTime = System.currentTimeMillis();
     }
 
-    @Override
     public BookingResult call() throws Exception {
+        dispatch.logEvent(this, "Starting booking, getting driver");
+
+        // Indicate that we're waiting for a driver
+        dispatch.incrementBookingsAwaitingDriver();
+
+        // Get a driver from dispatch
         driver = dispatch.getDriver();
+
+        // We have a driver now, so we're no longer waiting
+        dispatch.decrementBookingsAwaitingDriver();
+
+        dispatch.logEvent(this, "Starting, on way to passenger");
         driver.pickUpPassenger(passenger);
+        dispatch.logEvent(this, "Collected passenger, on way to destination");
         driver.driveToDestination();
-        long tripDuration = new Date().getTime() - startTime;
-        dispatch.addDriver(driver);  // Return the driver to dispatch
-        return new BookingResult(jobID, passenger, driver, tripDuration);
+
+        long tripDuration = System.currentTimeMillis() - startTime;
+
+        // Return the driver to the dispatch
+        dispatch.addDriver(driver);
+        dispatch.logEvent(this, "At destination, driver is now free");
+
+        return new BookingResult(bookingID, passenger, driver, tripDuration);
     }
+
 
     @Override
     public String toString() {
-        return jobID + ":" + (driver != null ? driver.name : "null") + ":" + (passenger != null ? passenger.name : "null");
+        String driverName = (driver != null) ? driver.name : "null";
+        String passengerName = (passenger != null) ? passenger.name : "null";
+        return bookingID + ":" + driverName + ":" + passengerName;
     }
 }

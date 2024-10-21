@@ -15,9 +15,10 @@ public class Driver extends Person {
     }
 
     public void driveToDestination() throws InterruptedException {
-        if (currentPassenger != null) {
-            long travelTime = currentPassenger.getTravelTime();
-            Thread.sleep(travelTime);
+        if (currentPassenger == null) {
+            throw new IllegalStateException("No passenger to drive to destination.");
         }
+        int travelTime = currentPassenger.getTravelTime();
+        Thread.sleep(travelTime);
     }
 }
