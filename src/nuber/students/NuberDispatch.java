@@ -4,51 +4,51 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.concurrent.Future;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class NuberDispatch {
+
     private final int MAX_DRIVERS = 999;
-    private Queue<Driver> driverQueue = new LinkedList<>();
-    private HashMap<String, NuberRegion> regions = new HashMap<>();
+    private Queue<Driver> availableDrivers;
+    private HashMap<String, NuberRegion> regions;
     private boolean logEvents;
-    private int bookingsAwaitingDriver = 0;
-    private ExecutorService executorService = Executors.newCachedThreadPool();
+    private boolean shutdownRequested = false;
 
     public NuberDispatch(HashMap<String, Integer> regionInfo, boolean logEvents) {
+        this.availableDrivers = new LinkedList<>();
+        this.regions = new HashMap<>();
         this.logEvents = logEvents;
+
         for (String regionName : regionInfo.keySet()) {
             regions.put(regionName, new NuberRegion(this, regionName, regionInfo.get(regionName)));
         }
     }
 
-    public synchronized boolean addDriver(Driver newDriver) {
-        if (driverQueue.size() < MAX_DRIVERS) {
-            driverQueue.offer(newDriver);
-            notifyAll(); // Notify threads waiting for a driver
-            return true;
+    public boolean addDriver(Driver newDriver) {
+        synchronized (availableDrivers) {
+            if (!shutdownRequested && availableDrivers.size() < MAX_DRIVERS) {
+                availableDrivers.add(newDriver);
+                availableDrivers.notify(); // Notify any threads waiting for a driver
+                return true;
+            }
+            return false;
         }
-        return false;
     }
 
-    public synchronized Driver getDriver() throws InterruptedException {
-        while (driverQueue.isEmpty()) {
-            wait(); // Wait for a driver to become available
+
+    public Driver getDriver() throws InterruptedException {
+        synchronized (availableDrivers) {
+            while (availableDrivers.isEmpty()) {
+                availableDrivers.wait();
+            }
+            return availableDrivers.poll();
         }
-        return driverQueue.poll();
     }
 
-    public synchronized int getBookingsAwaitingDriver() {
-        return bookingsAwaitingDriver;
-    }
 
-    public synchronized Future<BookingResult> bookPassenger(Passenger passenger, String region) {
-        NuberRegion nuberRegion = regions.get(region);
-        if (nuberRegion != null) {
-            bookingsAwaitingDriver++; // Increment bookings awaiting driver
-            return nuberRegion.bookPassenger(passenger);
-        }
-        return null;
+
+    public Future<BookingResult> bookPassenger(Passenger passenger, String region) {
+        if (shutdownRequested) return null;
+        return regions.get(region).bookPassenger(passenger);
     }
 
     public void logEvent(Booking booking, String message) {
@@ -57,16 +57,15 @@ public class NuberDispatch {
         }
     }
 
-    public void decrementAwaitingDriverBookings() {
-        synchronized (this) {
-            bookingsAwaitingDriver--; // Decrement pending bookings when a driver is assigned
-        }
-    }
-
     public void shutdown() {
+        shutdownRequested = true;
         for (NuberRegion region : regions.values()) {
             region.shutdown();
         }
-        executorService.shutdown();
+    }
+
+    public int getBookingsAwaitingDriver() {
+        // This is a placeholder; implement logic as needed
+        return 0;
     }
 }

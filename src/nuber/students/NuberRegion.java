@@ -1,32 +1,30 @@
 package nuber.students;
 
-import java.util.concurrent.Future;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class NuberRegion {
-    private final NuberDispatch dispatch;
-    private final String regionName;
-    private final int maxSimultaneousJobs;
-    private ExecutorService regionExecutor;
+
+    private NuberDispatch dispatch;
+    private String regionName;
+    private int maxSimultaneousJobs;
+    private int currentJobs = 0;
+    private boolean shutdownRequested = false;
 
     public NuberRegion(NuberDispatch dispatch, String regionName, int maxSimultaneousJobs) {
         this.dispatch = dispatch;
         this.regionName = regionName;
         this.maxSimultaneousJobs = maxSimultaneousJobs;
-        this.regionExecutor = Executors.newFixedThreadPool(maxSimultaneousJobs);
     }
 
-    public Future<BookingResult> bookPassenger(Passenger waitingPassenger) {
-        if (regionExecutor.isShutdown()) {
-            dispatch.logEvent(null, "Booking rejected: Region " + regionName + " is shutting down.");
-            return null; // Reject new bookings if the region is shutting down
-        }
+    public synchronized Future<BookingResult> bookPassenger(Passenger waitingPassenger) {
+        if (shutdownRequested || currentJobs >= maxSimultaneousJobs) return null;
+        currentJobs++;
         Booking booking = new Booking(dispatch, waitingPassenger);
-        return regionExecutor.submit(booking);
+        return Executors.newSingleThreadExecutor().submit(booking);
     }
 
     public void shutdown() {
-        regionExecutor.shutdown(); // Stop accepting new tasks and finish pending ones
+        shutdownRequested = true;
     }
 }
