@@ -2,23 +2,39 @@ package nuber.students;
 
 public class Driver extends Person {
 
-    private Passenger currentPassenger;
-
-    public Driver(String driverName, int maxSleep) {
-        super(driverName, maxSleep);
-    }
-
-    public void pickUpPassenger(Passenger newPassenger) throws InterruptedException {
+	private Passenger currentPassenger;
+	
+	public Driver(String driverName, int maxSleep)
+	{
+		 super(driverName, maxSleep);
+	}
+	
+	/**
+	 * Stores the provided passenger as the driver's current passenger and then
+	 * sleeps the thread for between 0-maxDelay milliseconds.
+	 * 
+	 * @param newPassenger Passenger to collect
+	 * @throws InterruptedException
+	 */
+	public void pickUpPassenger(Passenger newPassenger) throws InterruptedException
+	{
         this.currentPassenger = newPassenger;
-        long sleepTime = (long) (Math.random() * maxSleep);
+        // Simulate the time taken to pick up the passenger
+        int sleepTime = (int) (Math.random() * maxSleep);
         Thread.sleep(sleepTime);
-    }
+	}
 
-    public void driveToDestination() throws InterruptedException {
-        if (currentPassenger == null) {
-            throw new IllegalStateException("No passenger to drive to destination.");
-        }
-        int travelTime = currentPassenger.getTravelTime();
-        Thread.sleep(travelTime);
-    }
+	/**
+	 * Sleeps the thread for the amount of time returned by the current 
+	 * passenger's getTravelTime() function
+	 * 
+	 * @throws InterruptedException
+	 */
+	public void driveToDestination() throws InterruptedException {
+		 if (currentPassenger != null) {
+	            int travelTime = currentPassenger.getTravelTime();
+	            Thread.sleep(travelTime);
+	        }
+	}
+	
 }

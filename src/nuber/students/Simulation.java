@@ -68,13 +68,15 @@ public class Simulation {
 		{
 			throw new Exception("Dispatch bookPassenger() should return null if passenger requests booking after dispatch has started the shutdown");
 		}
-		
+
 		//whilst there are still active bookings, print out an update every 1s
 		while (bookings.size() > 0) {
+			
 			//go through each booking, and if it's done, remove it from our active bookings list
 			Iterator<Future<BookingResult>> i = bookings.iterator();
 			while (i.hasNext()) {
 				Future<BookingResult> f = i.next();
+
 				if (f.isDone()) {
 					i.remove();
 				}
