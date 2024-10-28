@@ -3,6 +3,7 @@ package nuber.students;
 import java.util.Date;
 import java.util.concurrent.Callable;
 
+
 /**
  * 
  * Booking represents the overall "job" for a passenger getting to their destination.
@@ -22,12 +23,12 @@ import java.util.concurrent.Callable;
  *
  */
 public class Booking implements Callable<BookingResult> {
-    private static int nextID = 1;
-    private final int bookingID;
-    private final NuberDispatch dispatch;
-    private final Passenger passenger;
-    private Driver driver;
-    private long startTime;
+	private static int nextID = 1;
+	private final int bookingID;
+	private final NuberDispatch dispatch;
+	private final Passenger passenger;
+	private Driver driver;
+	private long startTime;
 		
 	/**
 	 * Creates a new booking for a given Nuber dispatch and passenger, noting that no
@@ -39,10 +40,11 @@ public class Booking implements Callable<BookingResult> {
 	 */
 	public Booking(NuberDispatch dispatch, Passenger passenger)
 	{
-        this.dispatch = dispatch;
-        this.passenger = passenger;
-        this.bookingID = getNextID();
-        this.startTime = new Date().getTime();
+		this.bookingID = getNextID();
+		this.dispatch = dispatch;
+		dispatch.logEvent(this, "create a reservation");
+		this.passenger = passenger;
+		this.startTime = new Date().getTime();
 	}
 	
 	/**
@@ -62,44 +64,33 @@ public class Booking implements Callable<BookingResult> {
 	 * @return A BookingResult containing the final information about the booking 
 	 */
 	public BookingResult call() {
-	    try {
-	        // Step 1: Request a driver from dispatch
-	        driver = dispatch.getDriver();
+		try {
+			dispatch.logEvent(this, "Starting booking, getting driver");
+			driver = dispatch.getDriver();
 
-	        // Step 2: If no driver is available, wait until one becomes available
-	        while (driver == null) {
-	            Thread.sleep(100); // Wait for a short time before retrying
-	            driver = dispatch.getDriver();
-	        }
+			while (driver == null) {
+				Thread.sleep(100);
+				driver = dispatch.getDriver();
+			}
+			dispatch.logEvent(this, "Driver Starting, on way to passenger");
 
-	        // Step 3: Pickup the passenger
-	        dispatch.logEvent(this, "Starting booking, getting driver");
-	        driver.pickUpPassenger(passenger);
-	        dispatch.logEvent(this, driver.name + ": Collected passenger, on way to destination");
+			driver.pickUpPassenger(passenger);
+			dispatch.logEvent(this, "Collected passenger, on way to destination");
+			driver.driveToDestination();
 
-	        // Step 4: Drive to the destination
-	        driver.driveToDestination();
-	        dispatch.logEvent(this, driver.name + ": At destination, driver is now free");
+			dispatch.logEvent(this, "At destination, driver is now free");
+			long tripDuration = new Date().getTime() - startTime;
 
-	        // Step 5: Record the end time and calculate trip duration
-	        long endTime = new Date().getTime();
-	        long tripDuration = endTime - startTime;
+			dispatch.addDriver(driver);
+			synchronized (dispatch) {
+				dispatch.decrementPendingBookings();
+			}
 
-	        // Step 6: Add the driver back into the dispatch's available drivers
-	        dispatch.addDriver(driver);
-
-	        // Decrease the pending count in dispatch after the booking is complete
-	        synchronized (dispatch) {
-	            dispatch.decrementPendingBookings();
-	        }
-
-	        // Step 7: Return the BookingResult
-	        return new BookingResult(bookingID, passenger, driver, tripDuration);
-
-	    } catch (InterruptedException e) {
-	        Thread.currentThread().interrupt(); // Restore the interrupted status
-	        return null; // Return null on error or interruption
-	    }
+			return new BookingResult(bookingID, passenger, driver, tripDuration);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return null;
+		}
 	}
 	
 	/***
@@ -115,9 +106,9 @@ public class Booking implements Callable<BookingResult> {
 	@Override
 	public String toString()
 	{
-        String driverName = (driver == null) ? "null" : driver.name;
-        String passengerName = (passenger == null) ? "null" : passenger.name;
-        return bookingID + ":" + driverName + ":" + passengerName;
+		String driverName = (driver == null) ? "null" : driver.name;
+		String passengerName = (passenger == null) ? "null" : passenger.name;
+		return bookingID + ":" + driverName + ":" + passengerName;
 	}
 	
     // Synchronized method to ensure thread-safety in generating unique booking IDs

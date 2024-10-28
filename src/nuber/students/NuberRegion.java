@@ -1,11 +1,8 @@
 package nuber.students;
 
-import java.util.concurrent.Future;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 /**
  * A single Nuber region that operates independently of other regions, other than getting 
  * drivers from bookings from the central dispatch.
@@ -21,12 +18,12 @@ import java.util.concurrent.TimeUnit;
  *
  */
 public class NuberRegion {
-    private final NuberDispatch dispatch;
-    private final String regionName;
-    private final int maxSimultaneousJobs;
-    private final Semaphore availableSlots;
-    private boolean isShuttingDown;
-    private final ExecutorService bookingExecutor;
+	private final NuberDispatch dispatch;
+	private final String regionName;
+	private final int maxSimultaneousJobs;
+	private final Semaphore availableSlots;
+	private boolean isShuttingDown;
+	private final ExecutorService bookingExecutor;
 	/**
 	 * Creates a new Nuber region
 	 * 
@@ -36,13 +33,12 @@ public class NuberRegion {
 	 */
 	public NuberRegion(NuberDispatch dispatch, String regionName, int maxSimultaneousJobs)
 	{
-        this.dispatch = dispatch;
-        this.regionName = regionName;
-        this.maxSimultaneousJobs = maxSimultaneousJobs;
-        this.availableSlots = new Semaphore(maxSimultaneousJobs);
-        this.isShuttingDown = false;
-        this.bookingExecutor = Executors.newCachedThreadPool();
-
+		this.dispatch = dispatch;
+		this.regionName = regionName;
+		this.maxSimultaneousJobs = maxSimultaneousJobs;
+		this.availableSlots = new Semaphore(maxSimultaneousJobs);
+		this.isShuttingDown = false;
+		this.bookingExecutor = dispatch.getBookingExecutor();
 	}
 	
 	/**
@@ -57,45 +53,33 @@ public class NuberRegion {
 	 * @return a Future that will provide the final BookingResult object from the completed booking
 	 */
 	public synchronized Future<BookingResult> bookPassenger(Passenger waitingPassenger) {
-	    if (isShuttingDown) {
-	        dispatch.logEvent(null, "Region " + regionName + " is shutting down, booking rejected.");
-	        return null;
-	    }
+		if (isShuttingDown) {
+			return null;
+		}
 
-	    try {
-	        availableSlots.acquire();
-	        Booking newBooking = new Booking(dispatch, waitingPassenger);
-	        dispatch.logEvent(newBooking, "Creating booking");
+		try {
+			availableSlots.acquire();
+			Booking newBooking = new Booking(dispatch, waitingPassenger);
+			Future<BookingResult> futureBooking = bookingExecutor.submit(newBooking);
 
-	        Future<BookingResult> futureBooking = bookingExecutor.submit(newBooking);
+			bookingExecutor.submit(() -> {
+				try {
+					BookingResult result = futureBooking.get();
+					dispatch.logEvent(newBooking, "booking completed for " + result.passenger.name);
+				} catch (Exception e) {
+					dispatch.logEvent(newBooking, "booking failed");
+				} finally {
+					availableSlots.release();
+				}
+			});
 
-	        // 成功创建预订后增加待处理预订计数
-	        synchronized (dispatch) {
-	            dispatch.incrementPendingBookings();
-	        }
+			return futureBooking;
 
-	        bookingExecutor.submit(() -> {
-	            try {
-	                BookingResult result = futureBooking.get();
-	                dispatch.logEvent(newBooking, "Booking completed for " + result.passenger.name);
-	            } catch (Exception e) {
-	                dispatch.logEvent(newBooking, "Booking failed.");
-	            } finally {
-	                // 预订完成时减少待处理预订计数
-	                synchronized (dispatch) {
-	                    dispatch.decrementPendingBookings();
-	                }
-	                availableSlots.release();
-	            }
-	        });
-
-	        return futureBooking;
-
-	    } catch (InterruptedException e) {
-	        Thread.currentThread().interrupt();
-	        dispatch.logEvent(null, "Booking interrupted.");
-	        return null;
-	    }
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			dispatch.logEvent(null, "Booking interrupted.");
+			return null;
+		}
 	}
 
 
@@ -104,20 +88,8 @@ public class NuberRegion {
 	 * Called by dispatch to tell the region to complete its existing bookings and stop accepting any new bookings
 	 */
 	public void shutdown() {
-	    isShuttingDown = true;
-	    dispatch.logEvent(null, "Region " + regionName + " is shutting down.");
-
-	    try {
-	        // 停止接收新任务
-	        bookingExecutor.shutdown();
-	        // 等待现有任务完成
-	        if (!bookingExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
-	            bookingExecutor.shutdownNow(); // 超时后强制关闭
-	        }
-	    } catch (InterruptedException e) {
-	        bookingExecutor.shutdownNow();
-	        Thread.currentThread().interrupt();
-	    }
+		isShuttingDown = true;
+		dispatch.logEvent(null, "Region " + regionName + " is shutting down.");
 	}
 
 
